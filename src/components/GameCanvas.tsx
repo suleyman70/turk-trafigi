@@ -93,6 +93,12 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
       sedan.fillStyle(0xffffff, 1); // Headlights
       sedan.fillRect(8, 4, 5, 2); sedan.fillRect(35, 4, 5, 2);
       sedan.generateTexture("car_sedan", 48, 64);
+
+      // 5. Raindrop
+      const rain = scene.make.graphics({ x: 0, y: 0 }, false);
+      rain.fillStyle(0x7fbfff, 0.4);
+      rain.fillRect(0, 0, 2, 16);
+      rain.generateTexture("raindrop", 2, 16);
     }
 
     // -------------------------------------------------------------------------
@@ -121,6 +127,13 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
 
       private playerLives: number = 1;
       private isInvulnerable: boolean = false;
+
+      private isNight: boolean = false;
+      private nightOverlay!: Phaser.GameObjects.Rectangle;
+      private headlightsGraphics!: Phaser.GameObjects.Graphics;
+
+      private isRainy: boolean = false;
+      private rainGroup!: Phaser.GameObjects.Group;
 
       // Configurations
       private roadSpeed: number = 350; // pixels per second
@@ -232,6 +245,42 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
           callbackScope: this,
           loop: true
         });
+
+        // 10. Weather & Time Cycle Setup
+        this.nightOverlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
+        this.nightOverlay.setDepth(15);
+
+        this.headlightsGraphics = this.add.graphics();
+        this.headlightsGraphics.setDepth(16);
+
+        this.rainGroup = this.add.group();
+
+        // Trigger weather shift every 20 seconds
+        this.time.addEvent({
+          delay: 20000,
+          callback: this.cycleWeather,
+          callbackScope: this,
+          loop: true
+        });
+      }
+
+      private cycleWeather() {
+        if (this.isGameOverActive || isPaused) return;
+
+        // 50% chance to flip night mode
+        if (Math.random() < 0.5) {
+          this.isNight = !this.isNight;
+          this.tweens.add({
+            targets: this.nightOverlay,
+            fillAlpha: this.isNight ? 0.58 : 0,
+            duration: 3000
+          });
+        }
+
+        // 50% chance to flip rainy weather
+        if (Math.random() < 0.5) {
+          this.isRainy = !this.isRainy;
+        }
       }
 
       private spawnTraffic() {
@@ -407,7 +456,7 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
           baseSpeed = 200; // Minibüs: 20% slower manevra
         }
         const speed = baseSpeed + Math.min(this.score / 30, 100);
-        this.player.setVelocity(0);
+        let targetVx = 0;
 
         const activeControlType = settings.controlType;
 
@@ -418,11 +467,9 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
             const distance = targetX - this.player.x;
 
             if (Math.abs(distance) > 5) {
-              if (distance > 0) {
-                this.player.setVelocityX(Math.min(speed, distance * 10));
-              } else {
-                this.player.setVelocityX(Math.max(-speed, distance * 10));
-              }
+              targetVx = distance > 0 
+                ? Math.min(speed, distance * 10) 
+                : Math.max(-speed, distance * 10);
             }
           }
         } else {
@@ -438,11 +485,17 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
           }
 
           if (goLeft) {
-            this.player.setVelocityX(-speed);
+            targetVx = -speed;
           } else if (goRight) {
-            this.player.setVelocityX(speed);
+            targetVx = speed;
           }
         }
+
+        // Apply slide physics (high inertia in rain)
+        const currentVx = this.player.body?.velocity.x || 0;
+        const accel = this.isRainy ? 0.06 : 0.35; // lower accel = more slide
+        const newVx = Phaser.Math.Linear(currentVx, targetVx, accel);
+        this.player.setVelocityX(newVx);
 
         // Restrict player inside the yellow lines (lane boundary buffers)
         if (this.player.x < 54) this.player.x = 54;
@@ -510,6 +563,54 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
             }
           }
         });
+
+        // 5. Rain Spawning & Cleanup
+        if (this.isRainy) {
+          for (let i = 0; i < 2; i++) {
+            const rx = Phaser.Math.Between(0, 480);
+            const drop = this.physics.add.sprite(rx, -20, "raindrop");
+            drop.setVelocityY(1000);
+            drop.setVelocityX(-80); // wind angle
+            drop.setDepth(17);
+            this.rainGroup.add(drop);
+          }
+        }
+        
+        this.rainGroup.getChildren().forEach((child: any) => {
+          if (child.y > 820) {
+            child.destroy();
+          }
+        });
+
+        // 6. Draw Headlights in Night Mode
+        this.headlightsGraphics.clear();
+        if (this.isNight) {
+          this.headlightsGraphics.fillStyle(0xfffdb5, 0.2); // soft yellow cone
+
+          // Draw Player Headlights (depth 16 cone)
+          const frontY = this.player.y - (activeCarTexture === "car_dolmus" ? 44 : 32);
+          this.headlightsGraphics.beginPath();
+          this.headlightsGraphics.moveTo(this.player.x - 14, frontY);
+          this.headlightsGraphics.lineTo(this.player.x + 14, frontY);
+          this.headlightsGraphics.lineTo(this.player.x + 95, frontY - 260);
+          this.headlightsGraphics.lineTo(this.player.x - 95, frontY - 260);
+          this.headlightsGraphics.closePath();
+          this.headlightsGraphics.fillPath();
+
+          // Draw Headlights for Traffic Cars
+          this.trafficGroup.getChildren().forEach((child: any) => {
+            if (child.y > -50 && child.y < 820) {
+              const carFrontY = child.y + (child.texture.key === "car_dolmus" ? 44 : 32);
+              this.headlightsGraphics.beginPath();
+              this.headlightsGraphics.moveTo(child.x - 14, carFrontY);
+              this.headlightsGraphics.lineTo(child.x + 14, carFrontY);
+              this.headlightsGraphics.lineTo(child.x + 75, carFrontY + 220);
+              this.headlightsGraphics.lineTo(child.x - 75, carFrontY + 220);
+              this.headlightsGraphics.closePath();
+              this.headlightsGraphics.fillPath();
+            }
+          });
+        }
       }
 
       destroyRegistry() {
