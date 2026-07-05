@@ -9,9 +9,17 @@ interface GameCanvasProps {
   onScoreChange: (score: number) => void;
   onGameOver: (score: number) => void;
   isPaused: boolean;
+  onNitroChange?: (percent: number) => void;
+  onNitroActive?: (isActive: boolean) => void;
 }
 
-export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: GameCanvasProps) {
+export default function GameCanvas({ 
+  onScoreChange, 
+  onGameOver, 
+  isPaused,
+  onNitroChange,
+  onNitroActive
+}: GameCanvasProps) {
   const gameRef = useRef<HTMLDivElement>(null);
   const phaserGameRef = useRef<Phaser.Game | null>(null);
 
@@ -135,6 +143,13 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
       private isRainy: boolean = false;
       private rainGroup!: Phaser.GameObjects.Group;
 
+      private nitro: number = 0; // 0 to 100
+      private isNitroActive: boolean = false;
+      private nitroDuration: number = 5000; // ms
+      private nitroTimer: number = 0; // ms
+      private warpLinesGroup!: Phaser.GameObjects.Group;
+      private shiftKey!: Phaser.Input.Keyboard.Key;
+
       // Configurations
       private roadSpeed: number = 350; // pixels per second
       private laneWidth: number = 100;
@@ -205,6 +220,7 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         if (this.input.keyboard) {
           this.cursors = this.input.keyboard.createCursorKeys();
           this.wasdKeys = this.input.keyboard.addKeys("W,A,S,D") as any;
+          this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT) as Phaser.Input.Keyboard.Key;
 
           // Istanbul Horn sounds!
           this.input.keyboard.on("keydown-SPACE", () => {
@@ -217,6 +233,8 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
 
         // Start motor sound
         audioService.startMotor();
+
+        this.warpLinesGroup = this.add.group();
 
         // 6. Traffic Physics Group
         this.trafficGroup = this.physics.add.group();
@@ -238,7 +256,7 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
           delay: 100,
           callback: () => {
             if (!isPaused) {
-              this.score += 2; // 2 points per 100ms
+              this.score += this.isNitroActive ? 6 : 2; // 3x distance score during nitro
               onScoreChange(this.score);
             }
           },
@@ -394,9 +412,9 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         });
       }
 
-      private showMakasFeedback(x: number, y: number) {
+      private showMakasFeedback(x: number, y: number, textContent: string) {
         // Create glowing floating text
-        const text = this.add.text(x, y - 45, "MAKAS! +150 XP\n+50 TL", {
+        const text = this.add.text(x, y - 45, textContent, {
           fontSize: "14px",
           fontFamily: "var(--font-outfit), sans-serif",
           color: "#ffb319",
@@ -429,17 +447,47 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
 
         const deltaS = delta / 1000;
 
-        // 1. Difficulty Scaling (Increase speed and traffic density with score)
-        this.roadSpeed = 350 + Math.min(this.score / 15, 350); // Cap road speed at 700 px/s
-        const newInterval = Math.max(1800 - (this.score / 8), 750); // Cap spawn rate at 750ms
-        if (this.trafficTimer) {
-          (this.trafficTimer as any).delay = newInterval;
+        // 1. Nitro Gauge charging and triggers
+        if (this.isNitroActive) {
+          this.nitroTimer -= delta;
+          this.nitro = Math.max(0, (this.nitroTimer / this.nitroDuration) * 100);
+          if (onNitroChange) onNitroChange(this.nitro);
+
+          if (this.nitroTimer <= 0) {
+            this.isNitroActive = false;
+            this.nitro = 0;
+            if (onNitroActive) onNitroActive(false);
+          }
+        } else {
+          // Fill slowly: fully charges in ~25 seconds of clean survival
+          this.nitro = Math.min(this.nitro + (delta / 250), 100);
+          if (onNitroChange) onNitroChange(this.nitro);
+
+          // Activate Nitro on Shift Key Down
+          if (this.nitro >= 100 && this.shiftKey && this.shiftKey.isDown) {
+            this.isNitroActive = true;
+            this.nitroTimer = this.nitroDuration;
+            audioService.playNitro();
+            this.cameras.main.shake(300, 0.015);
+            if (onNitroActive) onNitroActive(true);
+          }
         }
 
-        // Rev engine pitch based on speed
-        const maxRoadSpeed = 700;
-        const speedPercent = (this.roadSpeed - 350) / (maxRoadSpeed - 350);
-        audioService.updateMotorPitch(speedPercent);
+        // 2. Difficulty & Speed adjustments
+        if (this.isNitroActive) {
+          this.roadSpeed = 800; // Hyper boost speed
+          audioService.updateMotorPitch(1.35); // Max rpm scream
+        } else {
+          this.roadSpeed = 350 + Math.min(this.score / 15, 350); // Cap road speed at 700 px/s
+          const newInterval = Math.max(1800 - (this.score / 8), 750); // Cap spawn rate at 750ms
+          if (this.trafficTimer) {
+            (this.trafficTimer as any).delay = newInterval;
+          }
+          // Rev engine pitch based on speed
+          const maxRoadSpeed = 700;
+          const speedPercent = (this.roadSpeed - 350) / (maxRoadSpeed - 350);
+          audioService.updateMotorPitch(speedPercent);
+        }
 
         // 2. Scroll Road Marks
         const scrollDist = this.roadSpeed * deltaS;
@@ -455,7 +503,11 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         } else if (activeCarTexture === "car_dolmus") {
           baseSpeed = 200; // Minibüs: 20% slower manevra
         }
-        const speed = baseSpeed + Math.min(this.score / 30, 100);
+        
+        let speed = baseSpeed + Math.min(this.score / 30, 100);
+        if (this.isNitroActive) {
+          speed += 60; // Extra speed boost for steering under NOS hyper speed
+        }
         let targetVx = 0;
 
         const activeControlType = settings.controlType;
@@ -515,11 +567,26 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
             const dx = Math.abs(this.player.x - child.x);
             // If they are in adjacent or same lane and very close
             if (dx < 110) {
-              this.score += 150;
+              const scoreBonus = this.isNitroActive ? 450 : 150;
+              const cashBonus = this.isNitroActive ? 150 : 50;
+
+              this.score += scoreBonus;
               onScoreChange(this.score);
-              storageService.addCash(50);
+              storageService.addCash(cashBonus);
+
               audioService.playMakas();
-              this.showMakasFeedback(this.player.x, this.player.y);
+              
+              const feedbackMsg = this.isNitroActive 
+                ? `NITRO MAKAS! +${scoreBonus} XP\n+${cashBonus} TL`
+                : `MAKAS! +${scoreBonus} XP\n+${cashBonus} TL`;
+                
+              this.showMakasFeedback(this.player.x, this.player.y, feedbackMsg);
+
+              // 15% Nitro charge reward on Makas!
+              if (!this.isNitroActive) {
+                this.nitro = Math.min(this.nitro + 15, 100);
+                if (onNitroChange) onNitroChange(this.nitro);
+              }
             }
           }
 
@@ -577,6 +644,24 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         }
         
         this.rainGroup.getChildren().forEach((child: any) => {
+          if (child.y > 820) {
+            child.destroy();
+          }
+        });
+
+        // 5b. Warp Speed Lines (Nitro)
+        if (this.isNitroActive) {
+          for (let i = 0; i < 2; i++) {
+            const wx = Phaser.Math.Between(30, 450);
+            const line = this.add.rectangle(wx, -20, 2, Phaser.Math.Between(50, 100), 0xffffff, 0.5);
+            this.physics.add.existing(line);
+            (line.body as Phaser.Physics.Arcade.Body).setVelocityY(2200); // super fast warp
+            line.setDepth(14);
+            this.warpLinesGroup.add(line);
+          }
+        }
+
+        this.warpLinesGroup.getChildren().forEach((child: any) => {
           if (child.y > 820) {
             child.destroy();
           }

@@ -60,6 +60,8 @@ export default function PlayPage() {
   const [isGameOver, setIsGameOver] = useState(false);
   const [playerName, setPlayerName] = useState("");
   const [isSaved, setIsSaved] = useState(false);
+  const [nitro, setNitro] = useState(0);
+  const [isNitroActive, setIsNitroActive] = useState(false);
 
   // Initialize
   useEffect(() => {
@@ -118,6 +120,8 @@ export default function PlayPage() {
             onScoreChange={handleScoreChange} 
             onGameOver={handleGameOver}
             isPaused={isPaused}
+            onNitroChange={setNitro}
+            onNitroActive={setIsNitroActive}
           />
         )}
 
@@ -132,6 +136,21 @@ export default function PlayPage() {
             <div className={styles.scoreContainer}>
               <span className={`${styles.scoreLabel} ${styles.highScoreLabel}`}>REKOR</span>
               <span className={`${styles.scoreValue} ${styles.highScoreValue}`}>{highScore} XP</span>
+            </div>
+
+            <div className={styles.nitroContainer}>
+              <div className={styles.nitroLabelRow}>
+                <span className={styles.nitroLabel}>NİTRO (NOS)</span>
+                <span className={`${styles.nitroValue} ${isNitroActive ? styles.nitroValueActive : nitro >= 100 ? styles.nitroValueReady : ""}`}>
+                  {isNitroActive ? "NOS AKTİF!" : nitro >= 100 ? "HAZIR (SHIFT)" : `${Math.floor(nitro)}%`}
+                </span>
+              </div>
+              <div className={styles.nitroBarBg}>
+                <div 
+                  className={`${styles.nitroBarFill} ${isNitroActive ? styles.nitroBarFillActive : nitro >= 100 ? styles.nitroBarFillReady : ""}`} 
+                  style={{ width: `${nitro}%` }}
+                />
+              </div>
             </div>
 
             <div className={styles.hudButtons}>

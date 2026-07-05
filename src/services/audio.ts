@@ -227,6 +227,61 @@ class AudioService {
       // ignore
     }
   }
+
+  // --- NITRO (Gas Swoosh effect) ---
+  public playNitro() {
+    if (!this.init() || !this.isEnabled()) return;
+
+    try {
+      const ctx = this.ctx!;
+      const now = ctx.currentTime;
+
+      // 0.6s of white noise sweep
+      const bufferSize = ctx.sampleRate * 0.6;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+
+      const noiseNode = ctx.createBufferSource();
+      noiseNode.buffer = buffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = "highpass";
+      filter.frequency.setValueAtTime(300, now);
+      filter.frequency.exponentialRampToValueAtTime(3000, now + 0.5);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(this.getVolume() * 0.5, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+
+      noiseNode.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      noiseNode.start(now);
+      noiseNode.stop(now + 0.6);
+
+      // Igniter sine sweep
+      const osc = ctx.createOscillator();
+      const oscGain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+
+      oscGain.gain.setValueAtTime(this.getVolume() * 0.25, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+      osc.connect(oscGain);
+      oscGain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } catch (e) {
+      // ignore
+    }
+  }
 }
 
 export const audioService = new AudioService();
