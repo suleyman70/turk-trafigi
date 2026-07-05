@@ -114,6 +114,10 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
       private score: number = 0;
       private scoreTimer!: Phaser.Time.TimerEvent;
 
+      private trafficGroup!: Phaser.Physics.Arcade.Group;
+      private trafficTimer!: Phaser.Time.TimerEvent;
+      private spawnInterval: number = 1800; // ms between spawns
+
       // Configurations
       private roadSpeed: number = 350; // pixels per second
       private laneWidth: number = 100;
@@ -149,14 +153,7 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         lineGraphics.fillRect(0, 0, 4, 30); // dashed line of height 30
         lineGraphics.generateTexture("dashed_line", 4, 60); // gap of 30
 
-        // Create three dashed lines dividing the 4 lanes
-        this.laneLines = this.add.tileSprite(width / 2, height / 2, 400, height, "dashed_line");
-        // Distribute them across lanes: x coordinates 140, 240, 340
-        // Phaser TileSprite repeats the texture across its width, so we create 3 separate ones
-        this.destroyRegistry();
-        this.laneLines.destroy();
-
-        // Let's create individual tile sprites for lanes
+        // Create individual tile sprites for lanes
         this.laneLines = this.add.tileSprite(140, height / 2, 4, height, "dashed_line");
         const line2 = this.add.tileSprite(240, height / 2, 4, height, "dashed_line");
         const line3 = this.add.tileSprite(340, height / 2, 4, height, "dashed_line");
@@ -181,7 +178,21 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
           this.wasdKeys = this.input.keyboard.addKeys("W,A,S,D") as any;
         }
 
-        // 6. Score Accumulation (Increases distance score every 100ms)
+        // 6. Traffic Physics Group
+        this.trafficGroup = this.physics.add.group();
+
+        // 7. Spawn Timer
+        this.trafficTimer = this.time.addEvent({
+          delay: this.spawnInterval,
+          callback: this.spawnTraffic,
+          callbackScope: this,
+          loop: true
+        });
+
+        // 8. Collision detection
+        this.physics.add.overlap(this.player, this.trafficGroup, this.handleCollision, undefined, this);
+
+        // 9. Score Accumulation (Increases distance score every 100ms)
         this.score = 0;
         this.scoreTimer = this.time.addEvent({
           delay: 100,
@@ -194,6 +205,69 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
           callbackScope: this,
           loop: true
         });
+      }
+
+      private spawnTraffic() {
+        if (isPaused) return;
+
+        // Choose random lane
+        const laneIndex = Phaser.Math.Between(0, this.laneOffsets.length - 1);
+        const startX = this.laneOffsets[laneIndex];
+
+        // Check if there is already a car nearby at the top of this lane
+        let tooClose = false;
+        this.trafficGroup.getChildren().forEach((child: any) => {
+          if (child.y < 150 && Math.abs(child.x - startX) < 20) {
+            tooClose = true;
+          }
+        });
+        if (tooClose) return;
+
+        // Choose random car texture
+        const textures = ["car_taxi", "car_dolmus", "car_sedan"];
+        const texture = Phaser.Math.RND.pick(textures);
+
+        // Adjust relative speed and size of collision body
+        let relativeSpeed = 100; // taxi
+        let widthBody = 36;
+        let heightBody = 56;
+
+        if (texture === "car_dolmus") {
+          relativeSpeed = 185; // Minibus is slower -> scrolls down faster relative to player
+          widthBody = 42;
+          heightBody = 76;
+        } else if (texture === "car_sedan") {
+          relativeSpeed = 60; // Sedan is faster -> scrolls down slower relative to player
+          widthBody = 36;
+          heightBody = 56;
+        }
+
+        const trafficCar = this.physics.add.sprite(startX, -100, texture);
+        trafficCar.body?.setSize(widthBody, heightBody, true);
+        
+        // Velocity in pixels/sec down the screen
+        const velocityY = this.roadSpeed - relativeSpeed;
+        trafficCar.setVelocityY(velocityY);
+
+        // Lane change parameters (some cars are aggressive)
+        const willChangeLane = Math.random() < 0.35;
+        const changeLaneTriggerY = Phaser.Math.Between(150, 450);
+
+        const tCar = trafficCar as any;
+        tCar.laneIndex = laneIndex;
+        tCar.willChangeLane = willChangeLane;
+        tCar.changeLaneTriggerY = changeLaneTriggerY;
+        tCar.targetLaneIndex = -1;
+        tCar.relativeSpeed = relativeSpeed;
+
+        this.trafficGroup.add(trafficCar);
+      }
+
+      private handleCollision() {
+        this.physics.pause();
+        this.scoreTimer.destroy();
+        this.trafficTimer.destroy();
+        onGameOver(this.score);
       }
 
       update(time: number, delta: number) {
@@ -257,6 +331,52 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         // Restrict player inside the yellow lines (lane boundary buffers)
         if (this.player.x < 54) this.player.x = 54;
         if (this.player.x > 426) this.player.x = 426;
+
+        // 3. Update Traffic Cars (Lane changing AI & cleanup)
+        this.trafficGroup.getChildren().forEach((child: any) => {
+          // Offscreen deletion
+          if (child.y > 850) {
+            child.destroy();
+            return;
+          }
+
+          // Handle Lane Changing AI
+          if (child.willChangeLane && child.targetLaneIndex === -1 && child.y > child.changeLaneTriggerY) {
+            const currentLane = child.laneIndex;
+            const possibleLanes: number[] = [];
+            if (currentLane > 0) possibleLanes.push(currentLane - 1);
+            if (currentLane < this.laneOffsets.length - 1) possibleLanes.push(currentLane + 1);
+
+            if (possibleLanes.length > 0) {
+              const targetLane = Phaser.Math.RND.pick(possibleLanes);
+              child.targetLaneIndex = targetLane;
+              
+              const targetX = this.laneOffsets[targetLane];
+              const direction = targetX > child.x ? 1 : -1;
+              
+              // Set horizontal velocity
+              child.setVelocityX(120 * direction);
+            } else {
+              child.willChangeLane = false;
+            }
+          }
+
+          // Check if lane change is complete
+          if (child.targetLaneIndex !== -1) {
+            const targetX = this.laneOffsets[child.targetLaneIndex];
+            const dx = targetX - child.x;
+            const vx = child.body.velocity.x;
+
+            // If we have crossed or reached the target X
+            if ((vx > 0 && dx <= 0) || (vx < 0 && dx >= 0)) {
+              child.x = targetX;
+              child.setVelocityX(0);
+              child.laneIndex = child.targetLaneIndex;
+              child.targetLaneIndex = -1;
+              child.willChangeLane = false; // change only once
+            }
+          }
+        });
       }
 
       destroyRegistry() {
