@@ -401,3 +401,93 @@
   padding: 30px 0;
   font-weight: 500;
 }
+
+/* Garage Modal Grid */
+.garageGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.garageItem {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: var(--transition);
+}
+
+.garageItemActive {
+  border-color: var(--primary);
+  background: rgba(102, 252, 241, 0.04);
+  box-shadow: 0 0 15px rgba(102, 252, 241, 0.1);
+}
+
+.carColorPreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.carNameOnBadge {
+  font-size: 0.9rem;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  text-align: center;
+  padding: 10px;
+}
+
+.garageItemDetails {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.garageItemDetails h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.garageItemDetails p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.carStatsList {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.carStatItem {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--text-muted);
+}
+
+.activeCarStatus {
+  align-self: flex-start;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: rgba(102, 252, 241, 0.1);
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(102, 252, 241, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}

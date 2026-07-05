@@ -93,4 +93,83 @@ export const storageService = {
     const scores = this.getLeaderboard();
     return scores.length > 0 ? scores[0].score : 0;
   },
+
+  getCash(): number {
+    if (typeof window === "undefined") return 0;
+    try {
+      const val = localStorage.getItem("turk_trafigi_cash");
+      return val ? parseInt(val) : 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  addCash(amount: number): number {
+    if (typeof window === "undefined") return 0;
+    try {
+      const current = this.getCash();
+      const updated = current + amount;
+      localStorage.setItem("turk_trafigi_cash", updated.toString());
+      return updated;
+    } catch {
+      return 0;
+    }
+  },
+
+  deductCash(amount: number): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+      const current = this.getCash();
+      if (current < amount) return false;
+      localStorage.setItem("turk_trafigi_cash", (current - amount).toString());
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  getOwnedCars(): string[] {
+    if (typeof window === "undefined") return ["player_car"];
+    try {
+      const val = localStorage.getItem("turk_trafigi_owned_cars");
+      return val ? JSON.parse(val) : ["player_car"];
+    } catch {
+      return ["player_car"];
+    }
+  },
+
+  buyCar(carId: string, price: number): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+      const owned = this.getOwnedCars();
+      if (owned.includes(carId)) return true;
+      if (this.deductCash(price)) {
+        const updated = [...owned, carId];
+        localStorage.setItem("turk_trafigi_owned_cars", JSON.stringify(updated));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
+  getActiveCar(): string {
+    if (typeof window === "undefined") return "player_car";
+    try {
+      const val = localStorage.getItem("turk_trafigi_active_car");
+      return val || "player_car";
+    } catch {
+      return "player_car";
+    }
+  },
+
+  setActiveCar(carId: string): void {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("turk_trafigi_active_car", carId);
+    } catch (e) {
+      console.error(e);
+    }
+  },
 };

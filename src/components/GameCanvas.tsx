@@ -119,6 +119,9 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
       private trafficTimer!: Phaser.Time.TimerEvent;
       private spawnInterval: number = 1800; // ms between spawns
 
+      private playerLives: number = 1;
+      private isInvulnerable: boolean = false;
+
       // Configurations
       private roadSpeed: number = 350; // pixels per second
       private laneWidth: number = 100;
@@ -164,14 +167,26 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         this.road = line3; // piggyback for simplicity
 
         // 4. Setup Player Car
+        const activeCarTexture = storageService.getActiveCar();
         const startLane = 2; // Start in lane 3 (index 2)
         const startX = this.laneOffsets[startLane];
         const startY = height - 120;
 
-        this.player = this.physics.add.sprite(startX, startY, "player_car");
+        this.player = this.physics.add.sprite(startX, startY, activeCarTexture);
         this.player.setCollideWorldBounds(true);
-        // Shrink collision body slightly for fair game physics
-        this.player.body?.setSize(36, 56, true);
+
+        this.playerLives = 1;
+        if (activeCarTexture === "car_dolmus") {
+          this.playerLives = 2;
+        }
+
+        let widthBody = 36;
+        let heightBody = 56;
+        if (activeCarTexture === "car_dolmus") {
+          widthBody = 42;
+          heightBody = 76;
+        }
+        this.player.body?.setSize(widthBody, heightBody, true);
 
         // 5. Input Controls
         if (this.input.keyboard) {
@@ -277,10 +292,43 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
 
       private isGameOverActive: boolean = false;
 
-      private handleCollision() {
-        if (this.isGameOverActive) return;
-        this.isGameOverActive = true;
+      private handleCollision(playerObj: any, trafficObj: any) {
+        if (this.isGameOverActive || this.isInvulnerable) return;
 
+        // If we have lives left (e.g. Dolmuş has 2 lives)
+        if (this.playerLives > 1) {
+          this.playerLives--;
+          this.isInvulnerable = true;
+
+          // Camera visual impact
+          this.cameras.main.flash(200, 255, 179, 25); // Yellow flash for fender bender
+          this.cameras.main.shake(150, 0.025);
+
+          // Panic horn beep
+          audioService.playHorn();
+
+          // Destroy hit traffic obstacle
+          if (trafficObj) {
+            trafficObj.destroy();
+          }
+
+          // Invulnerability blinking animation
+          this.tweens.add({
+            targets: this.player,
+            alpha: 0.4,
+            duration: 150,
+            yoyo: true,
+            repeat: 5,
+            onComplete: () => {
+              this.player.alpha = 1;
+              this.isInvulnerable = false;
+            }
+          });
+          return;
+        }
+
+        // Fatal crash
+        this.isGameOverActive = true;
         this.physics.pause();
         if (this.scoreTimer) this.scoreTimer.destroy();
         if (this.trafficTimer) this.trafficTimer.destroy();
@@ -299,21 +347,22 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
 
       private showMakasFeedback(x: number, y: number) {
         // Create glowing floating text
-        const text = this.add.text(x, y - 40, "MAKAS! +150", {
+        const text = this.add.text(x, y - 45, "MAKAS! +150 XP\n+50 TL", {
           fontSize: "14px",
           fontFamily: "var(--font-outfit), sans-serif",
           color: "#ffb319",
           stroke: "#000000",
           strokeThickness: 3,
+          align: "center",
           shadow: { color: "#ffb319", blur: 4, stroke: true, fill: true }
         });
         text.setOrigin(0.5);
 
         this.tweens.add({
           targets: text,
-          y: y - 100,
+          y: y - 105,
           alpha: 0,
-          duration: 800,
+          duration: 900,
           ease: "Power1",
           onComplete: () => text.destroy()
         });
@@ -350,7 +399,14 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         this.road.tilePositionY -= scrollDist;
 
         // 3. Handle Player Input Controls
-        const speed = 250 + Math.min(this.score / 30, 100); // Scale steering speed slightly with game speed
+        let baseSpeed = 250;
+        const activeCarTexture = storageService.getActiveCar();
+        if (activeCarTexture === "car_taxi") {
+          baseSpeed = 330; // Taksi: 30% faster manevra
+        } else if (activeCarTexture === "car_dolmus") {
+          baseSpeed = 200; // Minibüs: 20% slower manevra
+        }
+        const speed = baseSpeed + Math.min(this.score / 30, 100);
         this.player.setVelocity(0);
 
         const activeControlType = settings.controlType;
@@ -408,6 +464,7 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
             if (dx < 110) {
               this.score += 150;
               onScoreChange(this.score);
+              storageService.addCash(50);
               audioService.playMakas();
               this.showMakasFeedback(this.player.x, this.player.y);
             }

@@ -9,16 +9,18 @@ import {
   Volume2, 
   VolumeX, 
   X, 
-  Keyboard,
-  MousePointer,
-  Sparkles
+  Keyboard, 
+  MousePointer, 
+  Sparkles,
+  Car,
+  Coins
 } from "lucide-react";
 import styles from "./page.module.css";
 import { storageService, LeaderboardEntry, GameSettings } from "@/services/storage";
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [activeModal, setActiveModal] = useState<"leaderboard" | "settings" | null>(null);
+  const [activeModal, setActiveModal] = useState<"leaderboard" | "settings" | "garage" | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [settings, setSettings] = useState<GameSettings>({
     soundEnabled: true,
@@ -26,6 +28,9 @@ export default function Home() {
     controlType: "wasd",
   });
   const [highScore, setHighScore] = useState(0);
+  const [cash, setCash] = useState(0);
+  const [ownedCars, setOwnedCars] = useState<string[]>(["player_car"]);
+  const [activeCar, setActiveCar] = useState("player_car");
 
   // Avoid hydration mismatch
   useEffect(() => {
@@ -33,6 +38,9 @@ export default function Home() {
     setLeaderboard(storageService.getLeaderboard());
     setSettings(storageService.getSettings());
     setHighScore(storageService.getHighScore());
+    setCash(storageService.getCash());
+    setOwnedCars(storageService.getOwnedCars());
+    setActiveCar(storageService.getActiveCar());
   }, []);
 
   const handleSaveSettings = (updated: Partial<GameSettings>) => {
@@ -75,6 +83,19 @@ export default function Home() {
               Oyunu Başlat
             </button>
           </Link>
+
+          <button 
+            className={`${styles.btn} ${styles.btnSecondary}`}
+            onClick={() => {
+              setCash(storageService.getCash());
+              setOwnedCars(storageService.getOwnedCars());
+              setActiveCar(storageService.getActiveCar());
+              setActiveModal("garage");
+            }}
+          >
+            <Car size={20} />
+            Modifiye & Garaj
+          </button>
 
           <button 
             className={`${styles.btn} ${styles.btnSecondary}`}
@@ -219,6 +240,149 @@ export default function Home() {
                   FARE
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- GARAGE MODAL --- */}
+      {activeModal === "garage" && (
+        <div className={styles.modalOverlay} onClick={() => setActiveModal(null)}>
+          <div className={`${styles.modalContent} glass`} style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>
+                <Car size={24} className={styles.gameLogoHighlight} />
+                Makasçı Garajı
+              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,179,25,0.1)", border: "1px solid rgba(255,179,25,0.25)", color: "var(--accent)", padding: "4px 12px", borderRadius: 20, fontSize: "0.9rem", fontWeight: "bold" }}>
+                <Coins size={16} />
+                <span>{cash} TL</span>
+              </div>
+              <button className={styles.modalClose} onClick={() => setActiveModal(null)} style={{ marginLeft: 15 }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className={styles.garageGrid}>
+              {/* Car 1: Sahin */}
+              <div className={`${styles.garageItem} ${activeCar === "player_car" ? styles.garageItemActive : ""}`}>
+                <div className={styles.carColorPreview} style={{ background: "linear-gradient(135deg, #ff2a2a, #800000)" }}>
+                  <span className={styles.carNameOnBadge}>Şahin Baba</span>
+                </div>
+                <div className={styles.garageItemDetails}>
+                  <h3>Şahin 1.6 ie</h3>
+                  <p>Klasik Türk modifiye arabası. Dengeli ve asil başlangıç arabası.</p>
+                  <div className={styles.carStatsList}>
+                    <span className={styles.carStatItem}>Hız: Normal</span>
+                    <span className={styles.carStatItem}>Manevra: Normal</span>
+                  </div>
+                  {activeCar === "player_car" ? (
+                    <div className={styles.activeCarStatus}>SEÇİLİ</div>
+                  ) : (
+                    <button 
+                      className={`${styles.btn} ${styles.btnPrimary}`} 
+                      style={{ padding: "8px 12px", fontSize: "0.9rem" }}
+                      onClick={() => {
+                        storageService.setActiveCar("player_car");
+                        setActiveCar("player_car");
+                      }}
+                    >
+                      Kullan
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Car 2: Taxi */}
+              <div className={`${styles.garageItem} ${activeCar === "car_taxi" ? styles.garageItemActive : ""}`}>
+                <div className={styles.carColorPreview} style={{ background: "linear-gradient(135deg, #ffd000, #ff8000)" }}>
+                  <span className={styles.carNameOnBadge} style={{ color: "#000" }}>Egea Taksi</span>
+                </div>
+                <div className={styles.garageItemDetails}>
+                  <h3>İstanbul Taksi</h3>
+                  <p>Sarı Egea. Trafikte daha çevik (Sola/sağa %30 daha hızlı manevra).</p>
+                  <div className={styles.carStatsList}>
+                    <span className={styles.carStatItem} style={{ color: "var(--primary)" }}>Hız: Yüksek</span>
+                    <span className={styles.carStatItem} style={{ color: "var(--primary)" }}>Manevra: Çok İyi</span>
+                  </div>
+                  {ownedCars.includes("car_taxi") ? (
+                    activeCar === "car_taxi" ? (
+                      <div className={styles.activeCarStatus}>SEÇİLİ</div>
+                    ) : (
+                      <button 
+                        className={`${styles.btn} ${styles.btnPrimary}`} 
+                        style={{ padding: "8px 12px", fontSize: "0.9rem" }}
+                        onClick={() => {
+                          storageService.setActiveCar("car_taxi");
+                          setActiveCar("car_taxi");
+                        }}
+                      >
+                        Kullan
+                      </button>
+                    )
+                  ) : (
+                    <button 
+                      className={`${styles.btn} ${styles.btnPrimary}`} 
+                      style={{ padding: "8px 12px", fontSize: "0.9rem", background: cash >= 1000 ? "var(--accent)" : "rgba(255,255,255,0.05)", color: cash >= 1000 ? "#000" : "rgba(255,255,255,0.3)", cursor: cash >= 1000 ? "pointer" : "not-allowed" }}
+                      disabled={cash < 1000}
+                      onClick={() => {
+                        if (storageService.buyCar("car_taxi", 1000)) {
+                          setOwnedCars(storageService.getOwnedCars());
+                          setCash(storageService.getCash());
+                        }
+                      }}
+                    >
+                      Satın Al (1000 TL)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Car 3: Dolmus */}
+              <div className={`${styles.garageItem} ${activeCar === "car_dolmus" ? styles.garageItemActive : ""}`}>
+                <div className={styles.carColorPreview} style={{ background: "linear-gradient(135deg, #00a896, #028090)" }}>
+                  <span className={styles.carNameOnBadge}>Minibüs (Dolmuş)</span>
+                </div>
+                <div className={styles.garageItemDetails}>
+                  <h3>Karsan J9 Dolmuş</h3>
+                  <p>Hatlı minibüs. Hızı ve manevrası düşüktür ancak <b>2 Canı</b> vardır!</p>
+                  <div className={styles.carStatsList}>
+                    <span className={styles.carStatItem} style={{ color: "var(--secondary)" }}>Hız: Düşük</span>
+                    <span className={styles.carStatItem} style={{ color: "var(--accent)" }}>Özellik: 2 Can (Kalkan)</span>
+                  </div>
+                  {ownedCars.includes("car_dolmus") ? (
+                    activeCar === "car_dolmus" ? (
+                      <div className={styles.activeCarStatus}>SEÇİLİ</div>
+                    ) : (
+                      <button 
+                        className={`${styles.btn} ${styles.btnPrimary}`} 
+                        style={{ padding: "8px 12px", fontSize: "0.9rem" }}
+                        onClick={() => {
+                          storageService.setActiveCar("car_dolmus");
+                          setActiveCar("car_dolmus");
+                        }}
+                      >
+                        Kullan
+                      </button>
+                    )
+                  ) : (
+                    <button 
+                      className={`${styles.btn} ${styles.btnPrimary}`} 
+                      style={{ padding: "8px 12px", fontSize: "0.9rem", background: cash >= 2500 ? "var(--accent)" : "rgba(255,255,255,0.05)", color: cash >= 2500 ? "#000" : "rgba(255,255,255,0.3)", cursor: cash >= 2500 ? "pointer" : "not-allowed" }}
+                      disabled={cash < 2500}
+                      onClick={() => {
+                        if (storageService.buyCar("car_dolmus", 2500)) {
+                          setOwnedCars(storageService.getOwnedCars());
+                          setCash(storageService.getCash());
+                        }
+                      }}
+                    >
+                      Satın Al (2500 TL)
+                    </button>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
