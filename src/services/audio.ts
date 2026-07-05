@@ -282,6 +282,32 @@ class AudioService {
       // ignore
     }
   }
+
+  // --- SIREN (Dual-Tone alternating beeps) ---
+  public playSirenTone(isHigh: boolean) {
+    if (!this.init() || !this.isEnabled()) return;
+
+    try {
+      const ctx = this.ctx!;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(isHigh ? 880 : 660, now);
+
+      gain.gain.setValueAtTime(this.getVolume() * 0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.32);
+    } catch (e) {
+      // ignore
+    }
+  }
 }
 
 export const audioService = new AudioService();

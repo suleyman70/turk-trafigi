@@ -102,6 +102,26 @@ export default function GameCanvas({
       sedan.fillRect(8, 4, 5, 2); sedan.fillRect(35, 4, 5, 2);
       sedan.generateTexture("car_sedan", 48, 64);
 
+      // 6. Police Car
+      const police = scene.make.graphics({ x: 0, y: 0 }, false);
+      police.fillStyle(0x1a1a1a, 1); // Tires
+      police.fillRect(2, 6, 8, 16); police.fillRect(38, 6, 8, 16);
+      police.fillRect(2, 42, 8, 16); police.fillRect(38, 42, 8, 16);
+      police.fillStyle(0x0033aa, 1); // Blue Body
+      police.fillRoundedRect(6, 4, 36, 56, 10);
+      police.fillStyle(0xffffff, 1); // White Doors/Hood
+      police.fillRect(12, 18, 24, 28);
+      police.fillStyle(0x0e0e0e, 1); // Windows
+      police.fillRect(14, 22, 20, 8); police.fillRect(15, 38, 18, 6);
+      // Siren Bar
+      police.fillStyle(0xff0000, 1); // Red siren
+      police.fillRect(16, 29, 8, 3);
+      police.fillStyle(0x0000ff, 1); // Blue siren
+      police.fillRect(24, 29, 8, 3);
+      police.fillStyle(0xffffff, 1); // Headlights
+      police.fillRect(8, 4, 5, 2); police.fillRect(35, 4, 5, 2);
+      police.generateTexture("car_police", 48, 64);
+
       // 5. Raindrop
       const rain = scene.make.graphics({ x: 0, y: 0 }, false);
       rain.fillStyle(0x7fbfff, 0.4);
@@ -149,6 +169,11 @@ export default function GameCanvas({
       private nitroTimer: number = 0; // ms
       private warpLinesGroup!: Phaser.GameObjects.Group;
       private shiftKey!: Phaser.Input.Keyboard.Key;
+
+      private policeCar: Phaser.Physics.Arcade.Sprite | null = null;
+      private isPoliceActive: boolean = false;
+      private policeSirenTimer: Phaser.Time.TimerEvent | null = null;
+      private nextPoliceScore: number = 3000;
 
       // Configurations
       private roadSpeed: number = 350; // pixels per second
@@ -215,6 +240,15 @@ export default function GameCanvas({
           heightBody = 76;
         }
         this.player.body?.setSize(widthBody, heightBody, true);
+
+        // Reset Police state
+        this.isPoliceActive = false;
+        this.nextPoliceScore = 3000;
+        this.policeCar = null;
+        if (this.policeSirenTimer) {
+          this.policeSirenTimer.destroy();
+          this.policeSirenTimer = null;
+        }
 
         // 5. Input Controls
         if (this.input.keyboard) {
@@ -412,6 +446,48 @@ export default function GameCanvas({
         });
       }
 
+      private handlePoliceCrash(policeObj: any, trafficObj: any) {
+        if (!this.isPoliceActive) return;
+        this.isPoliceActive = false;
+
+        // Stop siren timer
+        if (this.policeSirenTimer) {
+          this.policeSirenTimer.destroy();
+          this.policeSirenTimer = null;
+        }
+
+        // Add 500 XP bonus!
+        this.score += 500;
+        onScoreChange(this.score);
+
+        // Flash screen cyan to celebrate
+        this.cameras.main.flash(250, 0, 255, 200);
+
+        // Play crash sound
+        audioService.playCrash();
+
+        // Create floating text
+        this.showMakasFeedback(policeObj.x, policeObj.y, "POLİS EKARTE EDİLDİ!\n+500 XP");
+
+        // Make police car spin out offscreen
+        policeObj.setAngularVelocity(400); // spin
+        policeObj.setVelocityX(Phaser.Math.Between(-150, 150));
+        policeObj.setVelocityY(500); // fall behind
+
+        // Schedule destroy
+        this.time.delayedCall(1200, () => {
+          policeObj.destroy();
+        });
+
+        // Destroy the traffic car it hit too
+        if (trafficObj) {
+          trafficObj.destroy();
+        }
+
+        // Set next trigger
+        this.nextPoliceScore = this.score + 4000;
+      }
+
       private showMakasFeedback(x: number, y: number, textContent: string) {
         // Create glowing floating text
         const text = this.add.text(x, y - 45, textContent, {
@@ -471,6 +547,53 @@ export default function GameCanvas({
             this.cameras.main.shake(300, 0.015);
             if (onNitroActive) onNitroActive(true);
           }
+        }
+
+        // 1b. Police Chase spawn trigger
+        if (!this.isPoliceActive && this.score >= this.nextPoliceScore) {
+          this.isPoliceActive = true;
+          
+          // Spawn police car offscreen bottom
+          this.policeCar = this.physics.add.sprite(this.player.x, 900, "car_police");
+          this.physics.add.existing(this.policeCar);
+          this.policeCar.setDepth(13);
+          this.policeCar.body?.setSize(36, 56, true);
+
+          // Alternating siren tone timer
+          this.policeSirenTimer = this.time.addEvent({
+            delay: 450,
+            callback: () => {
+              if (this.isPoliceActive && !isPaused && !this.isGameOverActive) {
+                const isHi = Math.floor(this.time.now / 450) % 2 === 0;
+                audioService.playSirenTone(isHi);
+              }
+            },
+            callbackScope: this,
+            loop: true
+          });
+
+          // Overlap checks
+          this.physics.add.overlap(this.player, this.policeCar, (p: any, pol: any) => {
+            this.handleCollision(p, pol);
+          }, undefined, this);
+
+          this.physics.add.overlap(this.policeCar, this.trafficGroup, (pol: any, traf: any) => {
+            this.handlePoliceCrash(pol, traf);
+          }, undefined, this);
+
+          // Flash screen blue to warn player
+          this.cameras.main.flash(400, 0, 80, 255);
+        }
+
+        // 1c. Police AI movement follow
+        if (this.isPoliceActive && this.policeCar && this.policeCar.active) {
+          const dx = this.player.x - this.policeCar.x;
+          this.policeCar.setVelocityX(dx * 3.8); // align on X
+
+          // Maintain position behind player
+          const targetY = this.player.y + 130;
+          const dy = targetY - this.policeCar.y;
+          this.policeCar.setVelocityY(dy * 5); // move up/down
         }
 
         // 2. Difficulty & Speed adjustments
@@ -667,8 +790,36 @@ export default function GameCanvas({
           }
         });
 
-        // 6. Draw Headlights in Night Mode
+        // 6. Draw Headlights in Night Mode & Police Flashing Lights
         this.headlightsGraphics.clear();
+
+        // 6a. Police Flashing Sirens (independent of day/night)
+        if (this.isPoliceActive && this.policeCar && this.policeCar.active) {
+          const px = this.policeCar.x;
+          const py = this.policeCar.y;
+          const isRedLeft = (Math.floor(time / 100) % 2 === 0);
+
+          // Left Cone (Red/Blue)
+          this.headlightsGraphics.fillStyle(isRedLeft ? 0xff0000 : 0x0000ff, 0.22);
+          this.headlightsGraphics.beginPath();
+          this.headlightsGraphics.moveTo(px - 14, py - 30);
+          this.headlightsGraphics.lineTo(px, py - 30);
+          this.headlightsGraphics.lineTo(px - 40, py - 180);
+          this.headlightsGraphics.lineTo(px - 85, py - 180);
+          this.headlightsGraphics.closePath();
+          this.headlightsGraphics.fillPath();
+
+          // Right Cone (Blue/Red)
+          this.headlightsGraphics.fillStyle(isRedLeft ? 0x0000ff : 0xff0000, 0.22);
+          this.headlightsGraphics.beginPath();
+          this.headlightsGraphics.moveTo(px, py - 30);
+          this.headlightsGraphics.lineTo(px + 14, py - 30);
+          this.headlightsGraphics.lineTo(px + 85, py - 180);
+          this.headlightsGraphics.lineTo(px + 40, py - 180);
+          this.headlightsGraphics.closePath();
+          this.headlightsGraphics.fillPath();
+        }
+
         if (this.isNight) {
           this.headlightsGraphics.fillStyle(0xfffdb5, 0.2); // soft yellow cone
 
