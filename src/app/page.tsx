@@ -69,7 +69,7 @@ export default function Home() {
         )}
 
         <div className={styles.buttonList}>
-          <Link href="/play" style={{ width: "100%" }}>
+          <Link href="/play" style={{ width: "100%", display: "block" }}>
             <button className={`${styles.btn} ${styles.btnPrimary}`}>
               <Play size={20} fill="currentColor" />
               Oyunu Başlat
