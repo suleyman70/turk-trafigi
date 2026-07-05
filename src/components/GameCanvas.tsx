@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as Phaser from "phaser";
 import { storageService, GameSettings } from "@/services/storage";
+import { audioService } from "@/services/audio";
 
 interface GameCanvasProps {
   onScoreChange: (score: number) => void;
@@ -176,7 +177,18 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         if (this.input.keyboard) {
           this.cursors = this.input.keyboard.createCursorKeys();
           this.wasdKeys = this.input.keyboard.addKeys("W,A,S,D") as any;
+
+          // Istanbul Horn sounds!
+          this.input.keyboard.on("keydown-SPACE", () => {
+            audioService.playHorn();
+          });
+          this.input.keyboard.on("keydown-H", () => {
+            audioService.playHorn();
+          });
         }
+
+        // Start motor sound
+        audioService.startMotor();
 
         // 6. Traffic Physics Group
         this.trafficGroup = this.physics.add.group();
@@ -273,6 +285,9 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         if (this.scoreTimer) this.scoreTimer.destroy();
         if (this.trafficTimer) this.trafficTimer.destroy();
 
+        // Play crash explosion
+        audioService.playCrash();
+
         // Screen effects for collision
         this.cameras.main.flash(300, 255, 74, 74);
         this.cameras.main.shake(300, 0.05);
@@ -307,9 +322,11 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
       update(time: number, delta: number) {
         if (isPaused || this.isGameOverActive) {
           this.physics.pause();
+          audioService.stopMotor();
           return;
         } else {
           this.physics.resume();
+          audioService.startMotor();
         }
 
         const deltaS = delta / 1000;
@@ -320,6 +337,11 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         if (this.trafficTimer) {
           (this.trafficTimer as any).delay = newInterval;
         }
+
+        // Rev engine pitch based on speed
+        const maxRoadSpeed = 700;
+        const speedPercent = (this.roadSpeed - 350) / (maxRoadSpeed - 350);
+        audioService.updateMotorPitch(speedPercent);
 
         // 2. Scroll Road Marks
         const scrollDist = this.roadSpeed * deltaS;
@@ -386,6 +408,7 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
             if (dx < 110) {
               this.score += 150;
               onScoreChange(this.score);
+              audioService.playMakas();
               this.showMakasFeedback(this.player.x, this.player.y);
             }
           }
@@ -458,6 +481,7 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
     phaserGameRef.current = game;
 
     return () => {
+      audioService.stopMotor();
       game.destroy(true);
       phaserGameRef.current = null;
     };
