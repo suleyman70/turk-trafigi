@@ -11,6 +11,12 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "Türk Trafiği | Endless Runner Araba Oyunu",
   description: "İstanbul trafiğinde makas atarak ilerle, engellerden kaç ve en yüksek skoru yap! Türkçe sesler ve eğlenceli Phaser oynanışı.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Türk Trafiği",
+  },
 };
 
 export const viewport: Viewport = {
@@ -18,6 +24,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  themeColor: "#0d0f13",
 };
 
 export default function RootLayout({
@@ -27,9 +34,30 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" className={outfit.variable}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(
+                    function(reg) {
+                      console.log('SW registered:', reg.scope);
+                    },
+                    function(err) {
+                      console.log('SW failure:', err);
+                    }
+                  );
+                });
+              }
+            `
+          }}
+        />
+      </head>
       <body>
         {children}
       </body>
     </html>
   );
 }
+

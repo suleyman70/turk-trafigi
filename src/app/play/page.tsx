@@ -62,15 +62,41 @@ export default function PlayPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [nitro, setNitro] = useState(0);
   const [isNitroActive, setIsNitroActive] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [controlType, setControlType] = useState<"wasd" | "arrows" | "mouse">("wasd");
 
   // Initialize
   useEffect(() => {
     setMounted(true);
     setHighScore(storageService.getHighScore());
     
+    const settings = storageService.getSettings();
+    setControlType(settings.controlType);
+    
     // Auto-fill player name if saved previously in settings or logs
     const savedName = localStorage.getItem("turk_trafigi_player_name") || "";
     setPlayerName(savedName);
+
+    // Detect if mobile/touch device
+    const checkMobile = () => {
+      const mobileQuery = window.matchMedia("(max-width: 768px)");
+      const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      setIsMobile(mobileQuery.matches || hasTouch);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+
+    // Initialize window.mobileControls
+    (window as any).mobileControls = {
+      left: false,
+      right: false,
+      nitro: false,
+      horn: false
+    };
+
+    return () => {
+      window.removeEventListener("resize", checkMobile);
+    };
   }, []);
 
   const handleScoreChange = useCallback((newScore: number) => {
@@ -166,6 +192,102 @@ export default function PlayPage() {
                   <Home size={18} />
                 </button>
               </Link>
+            </div>
+          </div>
+        )}
+
+        {/* MOBILE CONTROLS OVERLAY */}
+        {isMobile && !isGameOver && !isPaused && (
+          <div className={styles.mobileControls}>
+            {controlType !== "mouse" ? (
+              <div className={styles.steeringButtons}>
+                <button 
+                  className={`${styles.mobileBtn} ${styles.steerBtn}`}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.left = true;
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.left = false;
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.left = true;
+                  }}
+                  onMouseUp={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.left = false;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.left = false;
+                  }}
+                >
+                  ←
+                </button>
+                <button 
+                  className={`${styles.mobileBtn} ${styles.steerBtn}`}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.right = true;
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.right = false;
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.right = true;
+                  }}
+                  onMouseUp={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.right = false;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.right = false;
+                  }}
+                >
+                  →
+                </button>
+              </div>
+            ) : (
+              <div className={styles.dragSteerNotice}>
+                Dokun ve Sürükle (Sağ/Sol)
+              </div>
+            )}
+
+            <div className={styles.utilityButtons}>
+              <button 
+                className={`${styles.mobileBtn} ${styles.hornBtn}`}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  if ((window as any).mobileControls) (window as any).mobileControls.horn = true;
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if ((window as any).mobileControls) (window as any).mobileControls.horn = true;
+                }}
+              >
+                📢 KORNA
+              </button>
+
+              {nitro >= 100 && (
+                <button 
+                  className={`${styles.mobileBtn} ${styles.nitroBtn}`}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.nitro = true;
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if ((window as any).mobileControls) (window as any).mobileControls.nitro = true;
+                  }}
+                >
+                  🔥 NOS
+                </button>
+              )}
             </div>
           </div>
         )}

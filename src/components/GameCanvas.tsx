@@ -634,6 +634,31 @@ export default function GameCanvas({
         let targetVx = 0;
 
         const activeControlType = settings.controlType;
+        let goLeft = false;
+        let goRight = false;
+
+        // Read virtual buttons state from window.mobileControls
+        if (typeof window !== "undefined" && (window as any).mobileControls) {
+          const mc = (window as any).mobileControls;
+          if (mc.left) goLeft = true;
+          if (mc.right) goRight = true;
+
+          // Process mobile nitro triggers inside Phaser
+          if (mc.nitro && this.nitro >= 100 && !this.isNitroActive) {
+            this.isNitroActive = true;
+            this.nitroTimer = this.nitroDuration;
+            audioService.playNitro();
+            this.cameras.main.shake(300, 0.015);
+            if (onNitroActive) onNitroActive(true);
+            mc.nitro = false;
+          }
+
+          // Process mobile horn trigger
+          if (mc.horn) {
+            audioService.playHorn();
+            mc.horn = false;
+          }
+        }
 
         if (activeControlType === "mouse") {
           const pointer = this.input.activePointer;
@@ -647,16 +672,19 @@ export default function GameCanvas({
                 : Math.max(-speed, distance * 10);
             }
           }
+          // Enable steering buttons even in mouse mode if touched
+          if (goLeft) {
+            targetVx = -speed;
+          } else if (goRight) {
+            targetVx = speed;
+          }
         } else {
-          let goLeft = false;
-          let goRight = false;
-
           if (activeControlType === "arrows") {
-            goLeft = this.cursors.left.isDown;
-            goRight = this.cursors.right.isDown;
+            if (this.cursors.left.isDown) goLeft = true;
+            if (this.cursors.right.isDown) goRight = true;
           } else {
-            goLeft = this.wasdKeys.A.isDown;
-            goRight = this.wasdKeys.D.isDown;
+            if (this.wasdKeys.A.isDown) goLeft = true;
+            if (this.wasdKeys.D.isDown) goRight = true;
           }
 
           if (goLeft) {
