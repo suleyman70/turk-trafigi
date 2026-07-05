@@ -263,15 +263,49 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         this.trafficGroup.add(trafficCar);
       }
 
+      private isGameOverActive: boolean = false;
+
       private handleCollision() {
+        if (this.isGameOverActive) return;
+        this.isGameOverActive = true;
+
         this.physics.pause();
-        this.scoreTimer.destroy();
-        this.trafficTimer.destroy();
-        onGameOver(this.score);
+        if (this.scoreTimer) this.scoreTimer.destroy();
+        if (this.trafficTimer) this.trafficTimer.destroy();
+
+        // Screen effects for collision
+        this.cameras.main.flash(300, 255, 74, 74);
+        this.cameras.main.shake(300, 0.05);
+
+        this.time.delayedCall(800, () => {
+          onGameOver(this.score);
+        });
+      }
+
+      private showMakasFeedback(x: number, y: number) {
+        // Create glowing floating text
+        const text = this.add.text(x, y - 40, "MAKAS! +150", {
+          fontSize: "14px",
+          fontFamily: "var(--font-outfit), sans-serif",
+          color: "#ffb319",
+          stroke: "#000000",
+          strokeThickness: 3,
+          shadow: { color: "#ffb319", blur: 4, stroke: true, fill: true }
+        });
+        text.setOrigin(0.5);
+
+        this.tweens.add({
+          targets: text,
+          y: y - 100,
+          alpha: 0,
+          duration: 800,
+          ease: "Power1",
+          onComplete: () => text.destroy()
+        });
       }
 
       update(time: number, delta: number) {
-        if (isPaused) {
+        if (isPaused || this.isGameOverActive) {
           this.physics.pause();
           return;
         } else {
@@ -280,26 +314,31 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
 
         const deltaS = delta / 1000;
 
-        // 1. Scroll Road Marks
+        // 1. Difficulty Scaling (Increase speed and traffic density with score)
+        this.roadSpeed = 350 + Math.min(this.score / 15, 350); // Cap road speed at 700 px/s
+        const newInterval = Math.max(1800 - (this.score / 8), 750); // Cap spawn rate at 750ms
+        if (this.trafficTimer) {
+          (this.trafficTimer as any).delay = newInterval;
+        }
+
+        // 2. Scroll Road Marks
         const scrollDist = this.roadSpeed * deltaS;
         this.laneLines.tilePositionY -= scrollDist;
         this.sideLines.tilePositionY -= scrollDist;
         this.road.tilePositionY -= scrollDist;
 
-        // 2. Handle Player Input Controls
-        const speed = 250; // Sola/sağa kayma hızı
+        // 3. Handle Player Input Controls
+        const speed = 250 + Math.min(this.score / 30, 100); // Scale steering speed slightly with game speed
         this.player.setVelocity(0);
 
         const activeControlType = settings.controlType;
 
         if (activeControlType === "mouse") {
-          // Mouse/Touch steering control
           const pointer = this.input.activePointer;
           if (pointer.isDown || this.input.pointer1.isDown) {
             const targetX = pointer.x;
             const distance = targetX - this.player.x;
 
-            // Simple deadzone to prevent jittering
             if (Math.abs(distance) > 5) {
               if (distance > 0) {
                 this.player.setVelocityX(Math.min(speed, distance * 10));
@@ -309,14 +348,13 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
             }
           }
         } else {
-          // Keyboard controls (WASD or Arrows)
           let goLeft = false;
           let goRight = false;
 
           if (activeControlType === "arrows") {
             goLeft = this.cursors.left.isDown;
             goRight = this.cursors.right.isDown;
-          } else { // "wasd"
+          } else {
             goLeft = this.wasdKeys.A.isDown;
             goRight = this.wasdKeys.D.isDown;
           }
@@ -332,13 +370,29 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
         if (this.player.x < 54) this.player.x = 54;
         if (this.player.x > 426) this.player.x = 426;
 
-        // 3. Update Traffic Cars (Lane changing AI & cleanup)
+        // 4. Update Traffic Cars (Lane changing AI & cleanup)
         this.trafficGroup.getChildren().forEach((child: any) => {
           // Offscreen deletion
           if (child.y > 850) {
             child.destroy();
             return;
           }
+
+          // Check if passed player to reward score (Makas check)
+          if (!child.passed && this.player.y < child.y) {
+            child.passed = true;
+            const dx = Math.abs(this.player.x - child.x);
+            // If they are in adjacent or same lane and very close
+            if (dx < 110) {
+              this.score += 150;
+              onScoreChange(this.score);
+              this.showMakasFeedback(this.player.x, this.player.y);
+            }
+          }
+
+          // Adjust speed dynamically according to roadSpeed
+          const velocityY = this.roadSpeed - child.relativeSpeed;
+          child.setVelocityY(velocityY);
 
           // Handle Lane Changing AI
           if (child.willChangeLane && child.targetLaneIndex === -1 && child.y > child.changeLaneTriggerY) {
@@ -367,20 +421,18 @@ export default function GameCanvas({ onScoreChange, onGameOver, isPaused }: Game
             const dx = targetX - child.x;
             const vx = child.body.velocity.x;
 
-            // If we have crossed or reached the target X
             if ((vx > 0 && dx <= 0) || (vx < 0 && dx >= 0)) {
               child.x = targetX;
               child.setVelocityX(0);
               child.laneIndex = child.targetLaneIndex;
               child.targetLaneIndex = -1;
-              child.willChangeLane = false; // change only once
+              child.willChangeLane = false;
             }
           }
         });
       }
 
       destroyRegistry() {
-        // Helper cleanups
       }
     }
 
